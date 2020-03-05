@@ -1,0 +1,7 @@
+# Create your own based on settings_example.R
+settings.R
+
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
