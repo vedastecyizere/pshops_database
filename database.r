@@ -50,7 +50,7 @@ sc <- read.csv(paste(dd, "rrt_sc_3.9.20.csv", sep = "/"), header = TRUE,
 vrl <- read.csv(paste(dd, "rrt_vr_light_3.9.20.csv", sep = "/"), header = TRUE,   
                 stringsAsFactors = FALSE, na.strings = "") 
 
-cb <- read.csv(paste(dd, "rrt_client_bundles_3.9.20.csv", sep = "/"), header = TRUE,   
+cb <- read.csv(paste(dd, "rrt_client_bundles_2.28.20.csv", sep = "/"), header = TRUE,   
                 stringsAsFactors = FALSE, na.strings = "") 
 
 pdb <- read.csv(paste(dd, "payment_deadline_by_bundle_3.9.20.csv", sep = "/"), header = TRUE,   
@@ -124,7 +124,53 @@ table(cb1$cr.typ, useNA = "ifany")
 length(cb1$BundleName[cb1$BundleCredit == 0])
 
 #Dealing with dates
+table(cb1$BundleSignUpDate)
 cb1$BundleSignUpDate <- substr(cb1$BundleSignUpDate, 1, 10)
-cb1$BundleSignUpDate <- gsub(" ", "", cb1$BundleSignUpDate)
-cb1$BundleSignUpDate <- gsub("-", "/", cb1$BundleSignUpDate)
-cb1$BundleSignUpDate <- as.Date(cb1$BundleSignUpDate)
+
+#to check if it works
+head(cb1$BundleSignUpDate)
+
+#Then, let's change to date
+cb1$BundleSignUpDate <- as.Date(cb1$BundleSignUpDate, "%m/%d/%Y")
+
+#Now, let's create a column showing the credit deadline
+cb1$crt.mapping <- ifelse(cb1$BundleSignUpDate <= as.Date("12/31/2017", "%m/%d/%Y") , as.Date("03/31/2018", "%m/%d/%Y"), 0)
+cb1$crt.mapping <- ifelse(cb1$BundleSignUpDate > as.Date("12/31/2017", "%m/%d/%Y") & cb1$BundleSignUpDate <= as.Date("06/30/2018", "%m/%d/%Y")
+                          , as.Date("09/30/2018", "%m/%d/%Y"), cb1$crt.mapping)
+
+cb1$crt.mapping <- ifelse(cb1$BundleSignUpDate > as.Date("06/30/2018", "%m/%d/%Y") & cb1$BundleSignUpDate <= as.Date("12/31/2018", "%m/%d/%Y")
+                          , as.Date("03/31/2019", "%m/%d/%Y"), cb1$crt.mapping)
+
+cb1$crt.mapping <- ifelse(cb1$BundleSignUpDate > as.Date("12/31/2018", "%m/%d/%Y") & cb1$BundleSignUpDate <= as.Date("06/30/2019", "%m/%d/%Y")
+                          , as.Date("07/30/2019", "%m/%d/%Y"), cb1$crt.mapping)
+cb1$crt.mapping <- ifelse(cb1$BundleSignUpDate > as.Date("06/30/2019", "%m/%d/%Y") & cb1$BundleSignUpDate <= as.Date("11/30/2019", "%m/%d/%Y")
+                          , as.Date("03/01/2020", "%m/%d/%Y"), cb1$crt.mapping)
+
+cb1$crt.mapping <- ifelse(cb1$BundleSignUpDate > as.Date("11/30/2019", "%m/%d/%Y") & cb1$BundleSignUpDate <= as.Date("06/30/2020", "%m/%d/%Y")
+                          , as.Date("07/30/2020", "%m/%d/%Y"), cb1$crt.mapping)
+
+cb1$crt.mapping <- ifelse(cb1$BundleSignUpDate > as.Date("06/30/2020", "%m/%d/%Y") & cb1$BundleSignUpDate <= as.Date("11/30/2020", "%m/%d/%Y")
+                          , as.Date("03/30/2021", "%m/%d/%Y"), cb1$crt.mapping)
+
+cb1$crt.mapping <- ifelse(cb1$BundleSignUpDate > as.Date("11/30/2020", "%m/%d/%Y") & cb1$BundleSignUpDate <= as.Date("06/30/2021", "%m/%d/%Y")
+                          , as.Date("07/30/2021", "%m/%d/%Y"), cb1$crt.mapping)
+
+
+#To check if it works
+table(cb1$crt.mapping, useNA = "ifany")
+
+#Let's first turn these into dates
+cb1$crt.mapping <- as.Date(cb1$crt.mapping)
+
+#to check if it works
+table(cb1$crt.mapping, useNA = "ifany")
+length(cb1$crt.mapping[cb1$BundleSignUpDate > as.Date("06/30/2019", "%m/%d/%Y") & 
+                         cb1$BundleSignUpDate <= as.Date("11/30/2019", "%m/%d/%Y")])
+#Now, I see that things are good
+
+
+
+
+
+
+
