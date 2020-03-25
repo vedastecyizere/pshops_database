@@ -1056,3 +1056,226 @@ sc1$forgiven.dfter <- ifelse(!is.na(sc1$crnt.dln) &
 #checks 
 table(sc1$forgiven.dfter, useNA = "ifany")
 head(sc1$forgiven.dfter)
+
+sc1$actv.forgiveness.crdt <- ifelse(!is.na(sc1$crnt.dln) &  
+                                     today() <= sc1$crnt.dln &
+                                     sc1$actv.tot.credit > 0 & 
+                                     sc1$pst.clt.typ.1 == "Forgiven Defaulter", 
+                                     "Active Forgiveness Credit", F)
+#checks 
+table(sc1$actv.forgiveness.crdt, useNA = "ifany")
+head(sc1$actv.forgiveness.crdt)
+
+#Lastly, 
+sc1$double.dfter <- ifelse(!is.na(sc1$crnt.dln) &  
+                                            today() > sc1$crnt.dln &
+                                            sc1$amt.pd.by.crt.dln <  sc1$TotalCredit & 
+                                            (sc1$pst.clt.typ.1 == "Blacklisted Defaulter" |
+                                             sc1$pst.clt.typ.1 == "Forgiven Defaulter" |
+                                             sc1$pst.clt.typ.1 == "Double Defaulter"), 
+                                             "Double Defaulter", F)
+#checks 
+table(sc1$double.dfter, useNA = "ifany")
+head(sc1$double.dfter)
+
+#----------------------------------------------------------------------------
+#4.9 Total MM Payment 
+####################################################################
+
+sc1$tot.mm.payment <- ifelse(sc1$actv.tot.credit > 0, 
+                             sc1$actv.tot.repaid - sc1$prep.amount, 
+                             sc1$old.credit - sc1$prep.amount)
+#checks
+head(sc1$tot.mm.payment)
+
+#4.10 Credit eligibility - New credit terms 
+##################################################################################
+
+#Let's generate the credit eligibility 
+sc1$crt.eligibility <- ifelse((sc1$clt.typ == "Blacklisted Defaulter" |
+                               sc1$clt.typ == "actv.forgiveness.crdt" |      
+                               sc1$clt.typ == "Double Defaulter"), "No",
+                              ifelse(sc1$clt.typ == "Forgiven Defaulter", "Forgiveness Credit",
+                              ifelse(!is.na(sc1$credit.shld.hv.bn.pd.b.elgible) & 
+                                            sc1$TotalRepaid_IncludingOverpayments >= sc1$credit.shld.hv.bn.pd.b.elgible, "Yes", "No")))
+                              
+table(sc1$crt.eligibility, useNA = "ifany")
+
+sc1$perc.ce.prepayment <- ifelse(sc1$crt.eligibility == "Yes", 0.3, 
+                                 ifelse(sc1$crt.eligibility == "Forgiveness Credit", 0.5,
+                                        "n/a"))       
+#To check if it works
+table(sc1$perc.ce.prepayment)
+
+#calculating the minimun credit
+sc1$min.credit <- ifelse(sc1$clt.typ == "Top Up" & sc1$crt.eligibility == "Yes", 0,
+                         ifelse(sc1$crt.eligibility == "No", "n/a", 8000))
+
+#to check
+table(sc1$min.credit, useNA = "ifany")
+
+#Generating the maximum credit
+sc1$max.credit <- ifelse(!is.na(sc1$crt.eligibility) & sc1$crt.eligibility == "No", 0,
+                         ifelse(sc1$crt.eligibility == "Forgiveness Credit", 45000,
+                         ifelse(sc1$fst.crt.ev.tkn + 91 <= today(), 100000 - sc1$RemainingCredit,
+                                45000 - sc1$RemainingCredit)))
+
+#to check
+table(sc1$max.credit, useNA = "ifany")
+length(unique(sc1$OAFID[is.na(sc1$fst.crt.ev.tkn)]))
+
+#About solar eligibility
+#First, let's check the solar last POS date
+class(sc1$shs.po.date)
+class(sc1$skm.po.date)
+
+#First, let's turn NAs and Inf into zero
+sc1$shs.po.date <- ifelse(is.na(sc1$shs.po.date) | 
+                                  is.infinite(sc1$shs.po.date), 0, sc1$shs.po.date)
+sc1$skp.po.date <- ifelse(is.na(sc1$skp.po.date) | 
+                                  is.infinite(sc1$skp.po.date), 0, sc1$skp.po.date)
+sc1$skm.po.date <- ifelse(is.na(sc1$skm.po.date) | 
+                                  is.infinite(sc1$skm.po.date), 0, sc1$skm.po.date)
+
+
+#checks
+table(sc1$shs.po.date, useNA = "ifany")
+table(sc1$skp.po.date, useNA = "ifany")
+table(sc1$skm.po.date, useNA = "ifany")
+
+#Now, let's turn them to date
+sc1$shs.po.date <- as.Date(sc1$shs.po.date)
+sc1$skp.po.date <- as.Date(sc1$skp.po.date)
+sc1$skm.po.date <- as.Date(sc1$skm.po.date)
+
+#checks
+head(sc1$shs.po.date)
+class(sc1$shs.po.date)
+
+sc1$solar.eligibility <- ifelse(sc1$shs.po.date + 365 > today() |
+                                sc1$skp.po.date + 91 > today() |
+                                sc1$skm.po.date + 91 > today() |
+                                sc1$crt.eligibility == "Forgiveness Credit" |
+                                sc1$crt.eligibility == "No", 0, 
+                                ifelse(sc1$shs.po.date + 730 > today() &
+                                       (sc1$skp.po.date + 91 < today() |
+                                        sc1$skm.po.date + 91 < today()), "Small Solar Only", "Yes"))
+#To check if it works
+table(sc1$solar.eligibility, useNA = "ifany")
+length(unique(sc1$OAFID[sc1$shs.po.date + 730 > today() & 
+                                (sc1$skp.po.date + 91 < today() | 
+                                 sc1$skm.po.date + 91 < today()) & 
+                                sc1$crt.eligibility != "Forgiveness Credit" & 
+                                sc1$crt.eligibility != "No"])) #0
+
+#########################################################################
+#Now, it's time to order columns
+#############################################################
+names(sc1)
+
+sc2 <- sc1[c(#Season Clients data
+            "OAFID", "SeasonName", "RegionName", "DistrictName", "SectorName",                             
+            "FieldManager","SiteName", "FieldOfficer", "GroupName",                              
+            "LastName","FirstName", "NationalID","FirstSeasonDataEntry",                   
+            "FieldOfficerPayrollID", "FieldManagerPayrollID", "NewMember",                              
+            "TotalEnrolledSeasons","Facilitator", "TotalCredit","TotalRepaid",                            
+            "RemainingCredit", "X..Repaid", "FirstRepayment", "NbOfRepayments",                         
+            "LastRepayment",  "TotalRepaid_IncludingOverpayments", "Dropped",                                
+            "Deceased", "DataEntry", "ClientPhone", "AccountNumber", "ValidationCode",                         
+            "GovLocationGrandParent", "GovLocationParent", "GovLocationChild",                       
+            "GovLocationGrandChild", "SiteProjectCode", "GlobalClientID","X2018A_CycleCredit",                     
+            "X2018B_CycleCredit", "X20_DAP.credit.kg", "X20A_H.1520.Cash.kg",                    
+            "X20A_H.1520.credit.kg", "X20A_H.1602.Cash.kg", "X20A_H.1602.credit.kg",                  
+            "X20A_H.513.Cash.kg", "X20A_H.513.Credit.kg", "X20A_H.628.Credit.kg",                   
+            "X20A_H.629.Cash.kg", "X20A_H.629.Credit.kg", "X20A_KS.Chozi.Cash.kg",                  
+            "X20A_KS.Chozi.credit.kg", "X20A_KS.Njoro.II.Cash.kg", "X20A_KS.Njoro.II.credit.kg",             
+            "X20A_M101.Cash.kg", "X20A_M101.credit.kg", "X20A_NPK.credit.kg",                     
+            "X20A_PAN.53.Cash.kg", "X20A_PAN.53.credit.kg", "X20A_PAN.691.credit.kg",                 
+            "X20A_PICS.cash.qty", "X20A_PICS.credit.qty", "X20A_Pool.9A.credit.kg",                 
+            "X20A_RHM.104.Cash.kg","X20A_RHM.104.credit.kg","X20A_RHM.1402.Cash.kg",                  
+            "X20A_RHM.1402.credit.kg",  "X20A_RHM.1407.Cash.kg", "X20A_RHM.1407.credit.kg",                
+            "X20A_SC.403.Cash.kg", "X20A_SC.403.Credit.kg","X20A_SC.637.Cash.kg",                    
+            "X20A_SC.637.Credit.kg","X20A_SHS.cash.kg","X20A_SHS.credit.qty",                    
+            "X20A_SKP.credit.qty","X20A_Travertine.cash.kg","X20A_Travertine.credit.kg",              
+            "X20A_Urea.credit.kg", "X20A_WH.101.Credit.kg", "X20A_WH.403.Credit.kg",                  
+            "X20A_WH.505.Credit.kg", "X20A_WH.507.Cash.kg","X20A_WH.507.Credit.kg",                  
+            "X20A_WH.509.Cash.kg", "X20A_WH.509.Credit.kg","X20A_WH.605.credit.kg",                  
+            "X20A_Wheat.Local.Varieties.credit.kg","X20A_ZM.607.credit.kg",                  
+            "X20B_SKP2.credit.qty","ChickenFeedsGrower_cash.qty",            
+            "ChickenFeedsGrower_credit.qty","ChickenFeedsLayer_cash.qty",             
+            "ChickenFeedsLayer_credit.qty","ChickenFeedsPrelayer_cash.qty",          
+            "ChickenFeedsPrelayer_credit.qty","ChickenFeedsStarter_cash.qty",           
+            "ChickenFeedsStarter_credit.qty","Cypermethrin100ml_cash.kg",              
+            "Cypermethrin100ml_credit.kg", "DAP.Cash.kg","DAP.Credit.kg",                          
+            "Dithane_cash.kg","Dithane_credit.kg","H628.Cash.kg","H628.Credit.kg",                         
+            "KS.Njoro.I.Cash.kg","KS.Njoro.I.Credit.kg","NPK17.Cash.kg",                          
+            "NPK17.Credit.kg","PAN.691.Cash.kg", "PAN.691.Credit.kg", "PICS.Cash.qty",                          
+            "PICS.credit.qty","Pool.9A.Cash.kg","Pool.9A.Credit.kg",                      
+            "Pumps10_cash.qty", "Pumps10_credit.qty","Pumps20_credit.qty",                     
+            "Pumps20Lcash.qty", "Roket100ml_cash.kg", "Roket100ml_credit.kg",                   
+            "SHS.Cash.qty", "SHS.Credit.qty","SKM.Cash.qty","SKM.credit.qty",                         
+            "SKP.cash.kg", "SKP.Cash.qty","SKP.credit.LP.qty", "SKP1_cash.qty",                          
+            "SKP1_credit.qty","SKP200_cash.qty", "SKP200_Credit.qty",                      
+            "TUBURA.Shops.Credit.qty", "UREA.Cash.kg","UREA.Credit.kg",                         
+            "WH.101.Cash.kg", "WH.101.Credit.kg", "WH.403.cash.kg",                         
+            "WH.403.credit.kg", "WH.505.cash.kg","WH.505.Credit.kg",                       
+            "WH.605.cash.kg", "WH.605.Credit.kg",
+            
+            #Past Credit 2
+            "pst.clt.typ.2", "pst.crdt.2", "past.prep.amount.2",
+            "amt.pd.by.pst.dln.2", "amt.pd.by.past.pos.date.1",
+            "past.pos.date.2", "pst.dln.2", 
+            
+            #Past Credit 1
+            "pst.clt.typ.1", "pst.crdt.1", "past.prep.amount.1",
+            "amt.pd.by.pst.dln.1", "amt.pd.by.lst.pos.date",
+            "past.pos.date.1", "pst.dln.1", 
+            
+            
+            #Current Credit
+            "topup", "returning", "bcklist.dfter", "forgiven.dfter",                          
+            "actv.forgiveness.crdt", "double.dfter",
+            "clt.typ","amt.pd.by.crt.dln", "lst.pos.dt", "crnt.dln", 
+            
+            #Current credit details
+            "credit.type", "shs.po.date","skm.po.date", "skp.po.date",
+            "updtd.prep.amount" , "tot.mm.payment", "adjstd.lst.pos.dt",
+            "credit.length", "monthy.payment", 
+            
+            #Current credit payments
+            "n.credit", "n.months.shld.hv.bn.pd", "amt.shld.hv.bn.pd.snc.lst.pos.b.elgible", 
+            "credit.shld.hv.bn.pd.b.elgible", 
+            
+            #Credit eligibility(New credit terms)
+            "crt.eligibility", "perc.ce.prepayment", "min.credit",                              
+            "max.credit" , "solar.eligibility", 
+            
+            #Credit overview
+            "old.credit", "actv.tot.credit", "actv.tot.repaid", 
+            "fst.crt.ev.tkn")]    
+
+#Saving and exporting the final output
+save(sc2, file = paste(wd,"pshops_database_mar_25.RData", sep ="/"))
+
+#loading the file
+#load(file = paste(wd,"pshops_database_mar_25.RData", sep ="/"))
+
+write.table(sc2, file = paste(od, "pshops_database_mar_25.csv", sep = "/"),
+            row.names = FALSE, col.names = TRUE, sep = ",")
+                                                          
+                                         
+                                                                   
+                                                                   
+                                                                         
+                                                                    
+                                                                  
+                                                                 
+                                                              
+                                        
+
+
+
+
+
+
+
