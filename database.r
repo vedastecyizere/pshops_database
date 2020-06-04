@@ -33,6 +33,7 @@ table(clientbundles$BundleName, useNA = "ifany")
 
 #Now, let's traditionally load the RRT data - using roster data
 
+
 # Load libraries
 libs <- c("lubridate", "plyr", "zoo", "reshape2", "ggplot2", "dplyr","doBy","reshape")
 lapply(libs, require, character.only = T)
@@ -43,21 +44,20 @@ wd <- "D:/GitHub/pshops_database/rdata"
 od <- "D:/GitHub/pshops_database/output"
 
 
-sc <- read.csv(paste(dd, "rrt_sc_3.9.20.csv", sep = "/"), header = TRUE,   
-               stringsAsFactors = FALSE, na.strings = "") 
+sc <- read.csv(paste(dd, "rrt_sc_5.26.2020.csv", sep = "/"), header = TRUE,   
+               stringsAsFactors = FALSE, na.strings = "")
+sc <- subset(sc, TotalCredit > 0)
 
-
-vrl <- read.csv(paste(dd, "rrt_vr_light_3.9.20.csv", sep = "/"), header = TRUE,   
+vrl <- read.csv(paste(dd, "rrt_vr_light_5.26.2020.csv", sep = "/"), header = TRUE,   
                 stringsAsFactors = FALSE, na.strings = "") 
 
-cb <- read.csv(paste(dd, "rrt_client_bundles_2.28.20.csv", sep = "/"), header = TRUE,   
+cb <- read.csv(paste(dd, "rrt_client_bundles_5.26.2020.csv", sep = "/"), header = TRUE,   
                 stringsAsFactors = FALSE, na.strings = "") 
 
-pdb <- read.csv(paste(dd, "payment_deadline_by_bundle_3.9.20.csv", sep = "/"), header = TRUE,   
+pdb <- read.csv(paste(dd, "payment_deadline_by_bundle_6.2.2020.csv", sep = "/"), header = TRUE,   
                stringsAsFactors = FALSE, na.strings = "")
 pds <- read.csv(paste(dd, "payment_deadline_by_season_3.9.20.csv", sep = "/"), header = TRUE,   
                stringsAsFactors = FALSE, na.strings = "")
-
 ##################################################
 #Part 0: Data preparation
 ################################################
@@ -74,10 +74,13 @@ table(cb$DistrictName, useNA = "ifany")
 sc <- subset(sc, SectorName != "Murambi" & TotalCredit > 0) #Here, need also to remove cash only clients
 vrl <- subset(vrl, Sector != "Murambi")
 cb <- subset(cb, SectorName != "Murambi")
+cb <- subset(cb, DistrictName == "RRT P-Shops")
+cb <- subset(cb, cb$BundleCredit > 0)
 
 #to check if it works
 table(sc$SectorName, useNA = "ifany")
 summary(sc$TotalCredit)
+summary(cb$BundleCredit)
 table(vrl$Sector, useNA = "ifany")
 table(cb$SectorName)
 dim(sc)
@@ -94,6 +97,10 @@ View(pds)
 #to do this, we will have to merge the client bundles dataframe with payment deadline by bunles
 head(cb$BundleName)
 head(pdb$BundleName)
+table(cb$BundleName, useNA = "ifany")
+length(unique(cb$BundleName))
+dim(cb)
+table(cb$SectorName, useNA = "ifany")
 
 
 #checking if bundles names matches
@@ -106,6 +113,11 @@ test2 <- test[which(is.na(test$dif)), ]
 nrow(test2)
 test2 #No NAs on the client bundles  datbase's side
 
+#Renaming new bundle names
+pdb$BundleName <- gsub("ChickenFeedsGrower credit", "ChickenFeedsGrower_credit", pdb$BundleName)
+
+#Recheck if all bundles in the client bundle datasets are on the list
+
 #Let's go ahead a do merge
 cb1 <- merge(cb, pdb, by = "BundleName", all.x = T)
 
@@ -117,14 +129,18 @@ names(cb1)
 table(cb1$Credit.deadline, useNA = "ifany") 
 
 #Then, let's create a column showing original credit type
-cb1$cr.typ <- ifelse(cb1$BundleCredit == 0, 0, cb1$Credit.deadline)
+cb1$cr.typ <- ifelse(cb1$BundleCredit == 0,"N/A", cb1$Credit.deadline)
 
 #To check if it works
 table(cb1$cr.typ, useNA = "ifany")
 length(cb1$BundleName[cb1$BundleCredit == 0])
 
 #Dealing with dates
-table(cb1$BundleSignUpDate)
+class(cb1$BundleSignUpDate)
+head(cb1$BundleSignUpDate)
+
+#Turn them into date
+#table(cb1$BundleSignUpDate)
 cb1$BundleSignUpDate <- substr(cb1$BundleSignUpDate, 1, 10)
 
 #to check if it works
@@ -132,6 +148,10 @@ head(cb1$BundleSignUpDate)
 
 #Then, let's change to date
 cb1$BundleSignUpDate <- as.Date(cb1$BundleSignUpDate, "%m/%d/%Y")
+#to check if it works
+class(cb1$BundleSignUpDate)
+head(cb1$BundleSignUpDate)
+
 
 #Now, let's create a column showing the credit deadline
 cb1$crt.mapping <- ifelse(cb1$BundleSignUpDate <= as.Date("12/31/2017", "%m/%d/%Y") , as.Date("03/31/2018", "%m/%d/%Y"), 0)
@@ -158,33 +178,26 @@ cb1$crt.mapping <- ifelse(cb1$BundleSignUpDate > as.Date("11/30/2020", "%m/%d/%Y
 
 #To check if it works
 table(cb1$crt.mapping, useNA = "ifany")
+length(cb1$OAFID[is.na(cb1$BundleSignUpDate)]) #3 That's right
 
 #Let's first turn these into dates
 cb1$crt.mapping <- as.Date(cb1$crt.mapping)
 
+
 #to check if it works
 table(cb1$crt.mapping, useNA = "ifany")
 length(cb1$crt.mapping[cb1$BundleSignUpDate > as.Date("06/30/2019", "%m/%d/%Y") & 
-                         cb1$BundleSignUpDate <= as.Date("11/30/2019", "%m/%d/%Y")])
-
-View(cb1)
-#Now, I see that things are good
+                         cb1$BundleSignUpDate <= as.Date("11/30/2019", "%m/%d/%Y") & 
+                               !is.na(cb1$BundleSignUpDate)]) #Nice
 
 #Now, let's add some conditions here
 table(cb1$cr.typ)
-
-cb1$crt.mapping <- ifelse(cb1$cr.typ == 0, as.Date(0), cb1$crt.mapping)
-
-#Let's check what we got
-table(cb1$crt.mapping, useNA = "ifany")
-View(cb1)
 
 #Let's turn these into dates again
 cb1$crt.mapping <- as.Date(cb1$crt.mapping)
 
 #Let's check if it worked
 table(cb1$crt.mapping, useNA = "ifany")
-
 
 #Creating a variable with numeric values in the credit type column
 cb1$cr.typ1 <- as.numeric(cb1$cr.typ)
@@ -205,27 +218,26 @@ cb1$crt.mapping1 <- ifelse(cb1$cr.typ1 == 24, cb1$BundleSignUpDate + months(24),
 
 #Turn them into dates
 cb1$crt.mapping1 <- as.Date(cb1$crt.mapping1)
-
-
-#Change this back to date
-cb1$crt.mapping <- as.Date(cb1$crt.mapping)
-
-View(cb1)
-table(cb1$crt.mapping1, useNA = "ifany") #1NA presented
-table(cb1$BundleSignUpDate, useNA = "ifany")
 table(cb1$crt.mapping, useNA = "ifany")
+table(cb1$crt.mapping1, useNA = "ifany") 
+table(cb1$BundleSignUpDate, useNA = "ifany") #NA from the beginning
 
-
-cb1$crt.dln <- paste(substr(cb1$crt.mapping, 1, 8), substr(cb1$BundleSignUpDate, 9, 10), sep = "")
+#Treating the credit deadline
+cb1$crt.dln <- paste(substr(cb1$crt.mapping1, 1, 8), substr(cb1$BundleSignUpDate, 9, 10), sep = "")
 
 #To check if it works
-View(cb1)
+head(cb1$crt.mapping)
+head(cb1$BundleSignUpDate)
+head(cb1$crt.dln)
+table(cb1$crt.dln, useNA = "ifany")
+
 #change it to date
 cb1$crt.dln <- as.Date(cb1$crt.dln)
 class(cb1$crt.dln)
+table(cb1$crt.dln, useNA = "ifany")
 
 ########################################################################################
-#Part 2: Playing around with DSC and clients bundles 
+#Part 2: Playing around with SC and clients bundles 
 ########################################################################################
 
 #Part 2.1: Current credit details 
@@ -244,13 +256,17 @@ cb1$shs <- ifelse(grepl("SHS", cb1$BundleName), 1, 0)
 #To check if it works
 table(cb1$shs, useNA = "ifany")
 
+#Let's use this code to avoid warnings on dates
+RobustMax <- function(x) {if (length(x)>0) max(x) else -Inf}
+RobustMin <- function(x) {if (length(x)>0) min(x) else -Inf}
+
 
 cbsm <- cb1 %>%
         group_by(OAFID) %>%
         summarise(crnt.dln = max(crt.dln),
-                  shs.po.date = max(BundleSignUpDate[grepl("SHS", BundleName) & BundleCredit > 0]),
-                  skp.po.date = max(BundleSignUpDate[grepl("SKP", BundleName) & BundleCredit > 0]),
-                  skm.po.date = max(BundleSignUpDate[grepl("SKM", BundleName) & BundleCredit > 0]))
+                  shs.po.date = RobustMax(BundleSignUpDate[grepl("SHS", BundleName) & BundleCredit > 0]),
+                  skp.po.date = RobustMax(BundleSignUpDate[grepl("SKP", BundleName) & BundleCredit > 0]),
+                  skm.po.date = RobustMax(BundleSignUpDate[grepl("SKM", BundleName) & BundleCredit > 0]))
 
 #to check if it works
 head(cbsm)
@@ -258,13 +274,7 @@ length(cb1$BundleName[cb1$OAFID == 3876])
 max(cb1$crt.dln[cb1$OAFID == 3876])
 cb1$crt.dln[cb1$OAFID == 3876]
 cb1$BundleName[cb1$OAFID == 3876]
-View(cbsm)
-cb1$BundleName[cb1$OAFID == 4862]
-cb1$BundleCredit[cb1$OAFID == 4862]
-length(unique(cbsm$OAFID[is.na(cbsm$crnt.dln)]))
-length(unique(cbsm$OAFID[is.na(cbsm$skp.po.date)])) #No NAs
-
-#Now, I'm confident my numberrs are alright. 
+#I'm confident my numbers are alright. 
 
 #Now, let's merge this list with our season client
 length(unique(sc$OAFID))
@@ -277,16 +287,15 @@ test$dif <- test$x + test$y
 
 test2 <- test[which(is.na(test$dif)), ]
 nrow(test2)
-test2 
+test2
+#All clients in the SC are in the the client bundles 
 
 #....................................................................
 #Part 2.2 Generating the last POS date and amount paid by the current deadline using the repayment light
 #------------------------------------------------------------------
-
 head(vrl)
 length(unique(vrl$OAFID))
 length(vrl$OAFID)
-
 
 #On the vertical repayment, let's add the current deadline variable
 vrl$crt.dln <- cbsm$crnt.dln[match(vrl$OAFID, cbsm$OAFID)]
@@ -294,9 +303,10 @@ vrl$crt.dln <- cbsm$crnt.dln[match(vrl$OAFID, cbsm$OAFID)]
 
 #To check if it works
 head(vrl$crt.dln)
+table(vrl$crt.dln, useNA = "ifany")
 head(vrl)
-vrl$crt.dln[vrl$OAFID == "9632"]
-cbsm$crnt.dln[cbsm$OAFID == "9632"]
+vrl$crt.dln[vrl$OAFID == "3880"]
+cbsm$crnt.dln[cbsm$OAFID == "3880"]
 #Now, I see that things are alright
 
 #Now, let's calculate the amount paid per client as of the current deadline
@@ -314,10 +324,7 @@ head(vrl$date)
 head(vrl$RepaymentDate)
 class(vrl$date)
 
-#Let's use this code to avoid warnings
-RobustMax <- function(x) {if (length(x)>0) max(x) else -Inf}
-RobustMin <- function(x) {if (length(x)>0) min(x) else -Inf}
-
+#checking the amount column
 vrl1 <- vrl %>%
         group_by(OAFID) %>%
         summarise(amt.pd.by.crt.dln = sum(Amount[date <= crt.dln]),
@@ -332,13 +339,16 @@ vrl1 <- vrl %>%
                   past.pos.date.1 = RobustMax(date[Type == "Receipt" & date < lst.pos.dt]))
                                            
 #to check if it works
+View(vrl1)
 head(vrl1)
 tail(vrl1)
 max(vrl$date[vrl$Type == "Receipt" & vrl$OAFID == 3880])
-sum(vrl$Amount[vrl$OAFID == "12824" & vrl$date == max(vrl$date[vrl$OAFID == "12824" & vrl$Type == "Receipt"])])
+sum(vrl$Amount[vrl$OAFID == "3876" & vrl$date == max(vrl$date[vrl$OAFID == "3876" & vrl$Type == "Receipt"])])
 View(vrl1)
 min(vrl$date[vrl$Type == "Receipt" & vrl$OAFID == 3881])
 length(vrl$Type[vrl$Type == "Receipt" & vrl$OAFID == 3881])
+table(vrl1$past.pos.date.1, useNA = "ifany")
+table(vrl1$lst.pos.dt, useNA = "ifany") #There are farmers who never made any Receipt payments. >> To ask Leonie/Floribert, why?
 #Things are great
 
 #...........................................................................................
@@ -349,9 +359,8 @@ cb1$lst.pos.dt <- vrl1$lst.pos.dt[match(cb1$OAFID, vrl1$OAFID)]
 cb1$past.pos.date.1 <- vrl1$past.pos.date.1[match(cb1$OAFID, vrl1$OAFID)]
 
 head(cb1$OAFI, n = 20)
-head(cb1$lst.pos.dt, n = 20)
-head(cb1$past.pos.date.1, n = 20)
-head(cb1$crt.dln)
+cb1$lst.pos.dt[cb1$OAFID == 6208]
+vrl1$lst.pos.dt[vrl1$OAFID == 6208]
 
 
 #Now, let's re-run the cbsm summary table
@@ -376,6 +385,14 @@ View(cbsm) #Fixed
 #Now, let's transfer the past deadline 1 to the vertical repayment
 vrl$pst.dln.1 <- cbsm$pst.dln.1[match(vrl$OAFID, cbsm$OAFID)]
 
+#check
+table(vrl$pst.dln.1, useNA = "ifany")
+length(unique(vrl$OAFID[is.na(vrl$pst.dln.1)]))
+length(unique(cbsm$OAFID[is.na(cbsm$pst.dln.1)]))
+head(vrl$OAFI, n = 50)
+cbsm$OAFID[cbsm$pst.dln.1 == "2020-07-27"]
+vrl$pst.dln.1[vrl$OAFID == 12074]
+length(unique(cbsm$OAFID[is.na(cbsm$pst.dln.1)]))
 #......................................................
 
 #let's now re-run the vertical repayment summary so we can add amount paid by dealdine 1
@@ -404,10 +421,11 @@ View(vrl1)
 #------------------------------------------------------------------------
 cb1$past.pos.date.2 <- vrl1$past.pos.date.2[match(cb1$OAFID, vrl1$OAFID)]
 
-head(cb1$OAFID, n = 20)
-head(cb1$crt.dln)
-head(cb1$past.pos.date.2, n = 20)
 View(cb1)
+head(cb1$OAFID, n = 20)
+cb1$past.pos.date.2[cb1$OAFID == 4089]
+vrl1$past.pos.date.2[vrl1$OAFID == 4089] #True
+table(cb1$past.pos.date.2, useNA = "ifany")
 
 #Then, to calculate the client deadline 2, we need to re-run again the client bundles summary
 cbsm <- cb1 %>%
@@ -423,6 +441,7 @@ cbsm <- cb1 %>%
                   pst.crdt.2 = sum(BundleCredit[BundleSignUpDate <= past.pos.date.2]))
 View(cbsm)
 
+#Vedaste to pay attention ------
 #------------------------------------------------------------
 #Part 2.5: Generating the total amount paid by the past deadline 2
 #..............................................................
@@ -430,9 +449,23 @@ View(cbsm)
 #To do this, we need to transfer the pst deadline 2 variable to the vertical repayment
 vrl$pst.dln.2 <- cbsm$pst.dln.2[match(vrl$OAFID, cbsm$OAFID)]
 
+#checks
+View(vrl)
+vrl$pst.dln.2[vrl$OAFID == 4693]
+cbsm$pst.dln.2[cbsm$OAFID == 4693]
+table(vrl$pst.dln.2, useNA = "ifany")
+
+#Turn NAs into zero
+vrl$pst.dln.2 <- ifelse(is.na(vrl$pst.dln.2) | is.infinite(vrl$pst.dln.2), 0, vrl$pst.dln.2)
+
+#Turn this into date
+vrl$pst.dln.2 <- as.Date(vrl$pst.dln.2)
+
+#checks
+table(vrl$pst.dln.2, useNA = "ifany")
+
 #........................................................................
 #Now, let's re-run the vertical repayment summary so we can add amount paid by dealdine 2
-
 vrl1 <- vrl %>%
         group_by(OAFID) %>%
         summarise(amt.pd.by.crt.dln = sum(Amount[date <= crt.dln]),
@@ -473,6 +506,12 @@ dim(vrl1)
 class(sc1$crnt.dln)
 head(sc1$crnt.dln)
 View(sc1)
+
+names(cbsm)
+names(vrl1)
+table(sc1$shs.po.date, useNA = "ifany")
+table(cbsm$shs.po.date, useNA = "ifany")
+
 
 #Now, we have all summary in one place. We only remain with creating additional columns but in
 #one document
@@ -604,67 +643,77 @@ sc1$tot.sml.solar <- sc1$X20A_SKP.credit.qty +
                  sc1$SKP200_cash.qty +                      
                  sc1$SKP200_Credit.qty
 
+
+
 sc1$tot.shs <- sc1$X20A_SHS.cash.kg +    +                  
                sc1$X20A_SHS.credit.qty +                 
                sc1$SHS.Cash.qty +                         
                sc1$SHS.Credit.qty
 
-sc1$tot.chicken <- sc1$ChickenFeedsGrower_cash.qty +         
+sc1$tot.other.item <- sc1$ChickenFeedsGrower_cash.qty +         
                    sc1$ChickenFeedsGrower_credit.qty +       
                    sc1$ChickenFeedsLayer_cash.qty +          
                    sc1$ChickenFeedsLayer_credit.qty +        
                    sc1$ChickenFeedsPrelayer_cash.qty +       
                    sc1$ChickenFeedsPrelayer_credit.qty +     
                    sc1$ChickenFeedsStarter_cash.qty +        
-                   sc1$ChickenFeedsStarter_credit.qty
+                   sc1$ChickenFeedsStarter_credit.qty + 
+                   sc1$Roket100ml_credit.kg + 
+                   sc1$Cypermethrin100ml_credit.kg + 
+                   sc1$Dithane_credit.kg + 
+                   sc1$Pumps10_credit.qty +
+                   sc1$Pumps20_credit.qty +
+                   sc1$PICS.credit.qty
+                   
         
         
 
 sc1$credit.type <- ifelse(sc1$tot.ag > 0, "Agriculture Credit", 0)
 sc1$credit.type <- ifelse(sc1$tot.shs > 0, "SHS Credit", sc1$credit.type)
 sc1$credit.type <- ifelse(sc1$tot.sml.solar > 0, "Small Solar Credit", sc1$credit.type)
-sc1$credit.type <- ifelse(sc1$tot.chicken > 0, "Chicken Credit", sc1$credit.type)
+sc1$credit.type <- ifelse(sc1$tot.other.item > 0, "Other OAF Item Credit", sc1$credit.type)
 sc1$credit.type <- ifelse(sc1$tot.ag> 0 & (sc1$tot.shs > 0 | sc1$tot.sml.solar > 0 |
-                                                   sc1$tot.chicken > 0), "Combo Credit", sc1$credit.type)
+                                                   sc1$tot.other.item > 0), "Combo Credit", sc1$credit.type)
 #to check if it's correct
 table(sc1$credit.type, useNA = "ifany")
 length(unique(sc1$GlobalClientID[sc1$tot.ag > 0 & sc1$tot.shs > 0]))
-length(unique(sc1$GlobalClientID[sc1$tot.ag > 0 & sc1$tot.sml.solar > 0]))
-length(unique(sc1$GlobalClientID[sc1$tot.ag > 0 & sc1$tot.chicken > 0]))
-
+length(unique(sc1$GlobalClientID[sc1$tot.ag > 0 & sc1$tot.sml.solar > 0])) 
+length(unique(sc1$GlobalClientID[sc1$tot.ag> 0 & (sc1$tot.shs > 0 | sc1$tot.sml.solar > 0 |
+                                                          sc1$tot.chicken > 0)]))
 #Now, I can see that things are great
 
 #4.2 Calculating the adjusted POS date
 #----------------------------------------------------------------------
-sc1$adjstd.lst.pos.dt <- ifelse(day(sc1$lst.pos.dt) > 29, as.Date(paste(substr(sc1$lst.pos.dt, 1, 8),25, sep = "")), 
-                                sc1$lst.pos.dt)
+sc1$adjstd.lst.pos.dt <- ifelse(day(sc1$lst.pos.dt) > 29, 
+                                as.Date(paste(substr(sc1$lst.pos.dt, 1, 8),25, sep = "")), sc1$lst.pos.dt)
 
 #To check if it works
 head(sc1$adjstd.lst.pos.dt, n = 20)
 
 #Let's first change this to date format
 table(sc1$adjstd.lst.pos.dt, useNA = "ifany")
+table(sc1$lst.pos.dt, useNA = "ifany")
 class(sc1$adjstd.lst.pos.dt)
 sc1$adjstd.lst.pos.dt <- as.Date(sc1$adjstd.lst.pos.dt)
 
 #Then, let's check
 head(sc1$adjstd.lst.pos.dt, n = 100)
 head(sc1$lst.pos.dt, n = 100)
-
 #-----------------------------------------------------------------------------
 #4.3 Creating a column showing the current credit length in months
 
 ##############################################################################
-sc1$credit.length <- (as.yearmon(sc1$crnt.dln) - as.yearmon(sc1$adjstd.lst.pos.dt))*12
+sc1$credit.length <- round((as.yearmon(sc1$crnt.dln) - as.yearmon(sc1$adjstd.lst.pos.dt))*12, 0)
 
 #to check if it works
 head(sc1$crnt.dln)
 head(sc1$adjstd.lst.pos.dt)
 head(sc1$credit.length)
+table(sc1$credit.length)
 
 #Calculating the active credit
 #If Totalcredit = total repaid, no active credit. 
-#If the above is not the case, take total credit - total repaid by the last POS dat
+#If the above is not the case, take total credit - total repaid by the last POS date
 sc1$actv.tot.credit <- ifelse(sc1$TotalCredit == sc1$TotalRepaid,0, 
                               sc1$TotalCredit - sc1$amt.pd.by.lst.pos.date)
 #To check if it works
@@ -684,7 +733,8 @@ head(sc1$actv.tot.credit)
 head(sc1$old.credit)
 
 #Finally, we can also add on the active total repaid
-length(unique(sc1$GlobalClientID[is.na(sc1$TotalRepaid)]))
+length(unique(sc1$GlobalClientID[is.na(sc1$actv.tot.credit)]))
+length(unique(sc1$GlobalClientID[is.na(sc1$TotalCredit)]))
 length(unique(sc1$GlobalClientID[is.na(sc1$old.credit)]))
 table(sc1$old.credit, useNA = "ifany")
 
@@ -697,12 +747,12 @@ sc1$actv.tot.repaid <- sc1$TotalRepaid - sc1$old.credit
 #Now, let's create the updated POS date to use when creating the prepayment
 length(unique(sc1$OAFID[sc1$pst.crdt.1 > sc1$lst.credit]))
 length(unique(sc1$OAFID[sc1$pst.crdt.2 > sc1$pst.crdt.1]))
-length(unique(sc1$OAFID[sc1$actv.tot.credit > sc1$lst.credit])) #52
+length(unique(sc1$OAFID[sc1$actv.tot.credit > sc1$lst.credit]))
 
 #Before doing this, let's change all NAs into zero
-length(unique(sc1$OAFID[is.na(sc1$pst.crdt.2)])) #106
-length(unique(sc1$OAFID[is.na(sc1$pst.crdt.1)])) #106
-length(unique(sc1$OAFID[is.na(sc1$lst.credit)])) #106
+length(unique(sc1$OAFID[is.na(sc1$pst.crdt.2)])) #2
+length(unique(sc1$OAFID[is.na(sc1$pst.crdt.1)])) #7
+length(unique(sc1$OAFID[is.na(sc1$lst.credit)])) #7
 length(unique(sc1$OAFID[is.na(sc1$actv.tot.credit)])) #5
 ###############################################################
 
@@ -720,14 +770,13 @@ length(unique(sc1$OAFID[is.na(sc1$actv.tot.credit)])) #0
 
 #it works
 
-
 #For dates
 length(unique(sc1$OAFID[is.na(sc1$lst.pos.dt)])) #5
 length(unique(sc1$OAFID[is.infinite(sc1$lst.pos.dt)])) #1
 length(unique(sc1$OAFID[is.na(sc1$past.pos.date.1)])) #5
-length(unique(sc1$OAFID[is.infinite(sc1$past.pos.date.1)])) #3,668
+length(unique(sc1$OAFID[is.infinite(sc1$past.pos.date.1)])) #3,675
 length(unique(sc1$OAFID[is.na(sc1$past.pos.date.2)])) #5
-length(unique(sc1$OAFID[is.infinite(sc1$past.pos.date.2)])) #4,158
+length(unique(sc1$OAFID[is.infinite(sc1$past.pos.date.2)])) #0
 
 table(sc1$lst.pos.dt, useNA = "ifany")
 table(sc1$past.pos.date.1, useNA = "ifany")
@@ -755,94 +804,13 @@ table(sc1$past.pos.date.2, useNA = "ifany")
 table(sc1$past.pos.date.1, useNA = "ifany")
 table(sc1$lst.pos.dt, useNA = "ifany")
 
-
-
-#Then, now we can create the updated POS date
-sc1$updtd.pos.date <- ifelse(sc1$actv.tot.credit > 0 & 
-                               sc1$actv.tot.credit <= sc1$pst.crdt.2, sc1$past.pos.date.2, 0)
-
-#to check if it works
-table(sc1$updtd.pos.date, useNA = "ifany")
-length(unique(sc1$OAFID[sc1$actv.tot.credit == 0 | sc1$actv.tot.credit > sc1$pst.crdt.2])) #Nice
-
-#Then, 
-sc1$updtd.pos.date <- ifelse(sc1$actv.tot.credit > 0 & sc1$actv.tot.credit > sc1$pst.crdt.2 &
-                               sc1$actv.tot.credit <= sc1$pst.crdt.1, sc1$past.pos.date.1, sc1$updtd.pos.date)
+#let's turn this to Date format
+sc1$lst.pos.dt <- as.Date(sc1$lst.pos.dt)
+sc1$past.pos.date.1 <- as.Date(sc1$past.pos.date.1)
+sc1$past.pos.date.2 <- as.Date(sc1$past.pos.date.2)
 
 #check
-table(sc1$updtd.pos.date, useNA = "ifany")
-length(unique(sc1$OAFID[sc1$updtd.pos.date > 0]))
-length(unique(sc1$OAFID[sc1$actv.tot.credit > 0 & sc1$actv.tot.credit <= sc1$pst.crdt.1])) #Nice
-
-#Lastly,
-sc1$updtd.pos.date <- ifelse(sc1$actv.tot.credit > 0 & sc1$actv.tot.credit > sc1$pst.crdt.1 &
-                               sc1$actv.tot.credit <= sc1$lst.credit, sc1$lst.pos.dt, sc1$updtd.pos.date)
-#check
-table(sc1$updtd.pos.date, useNA = "ifany")
-length(unique(sc1$OAFID[sc1$updtd.pos.date > 0]))
-length(unique(sc1$OAFID[sc1$actv.tot.credit > 0 & sc1$actv.tot.credit <= sc1$lst.credit]))
-
-
-
-length(unique(sc1$OAFID[sc1$actv.tot.credit == 0 | sc1$actv.tot.credit <= sc1$pst.crdt.1 |
-                                sc1$actv.tot.credit > sc1$lst.credit]))
-length(unique(sc1$OAFID[sc1$updtd.pos.date != 0]))
-length(unique(sc1$OAFID[sc1$lst.pos.dt != 0 & sc1$actv.tot.credit > sc1$pst.crdt.1 &
-                                sc1$actv.tot.credit <= sc1$lst.credit]))
-
-table(sc1$updtd.pos.date, useNA = "ifany")
-table(sc1$actv.tot.credit, useNA = "ifany")
-table(sc1$lst.credit, useNA = "ifany")
-table(sc1$pst.crdt.1, useNA = "ifany")
-table(sc1$pst.crdt.2, useNA = "ifany")
-
-table(sc1$lst.pos.dt, useNA = "ifany")
-table(sc1$past.pos.date.1, useNA = "ifany")
-table(sc1$past.pos.date.2, useNA = "ifany")
-
-#Let's change this into date format
-sc1$updtd.pos.date <- as.Date(sc1$updtd.pos.date)
-
-#to check if it works
-head(sc1$updtd.pos.date)
-
-#################################################################################
-#4.4 calculating the prepaymment amount
-#--------------------------------------------------------------------------------
-#To be able to do this, we will need to add active credit & updated last POS from SC to vertical repayment
-vrl$actv.tot.credit <- sc1$actv.tot.credit[match(vrl$OAFID, sc1$OAFID)]
-vrl$updtd.pos.date <- sc1$updtd.pos.date[match(vrl$OAFID, sc1$OAFID)]
-
-#To check if it works
-head(vrl$OAFID)
-head(vrl$updtd.pos.date)
-head(vrl$actv.tot.credit)
-
-#Now, let's re-run the code for summary vertical repayment
-vrl2 <- vrl %>%
-        group_by(OAFID) %>%
-        summarise(amt.pd.by.crt.dln = sum(Amount[date <= crt.dln]),
-                  lst.pos.dt = RobustMax(date[Type == "Receipt"]),
-                  actv.tot.credit = max(actv.tot.credit),
-                  #adding number of credit taken - Type = Receipt
-                  n.credit = length(Type[Type == "Receipt"]),
-                  fst.crt.ev.tkn = RobustMin(date[Type == "Receipt"]),
-                  #Amount paid by last PO date 
-                  amt.pd.by.lst.pos.date = sum(Amount[date < lst.pos.dt]),
-                  past.pos.date.1 = RobustMax(date[Type == "Receipt" & date < lst.pos.dt]),
-                  amt.pd.by.pst.dln.1 = sum(Amount[date <= pst.dln.1]),
-                  past.prep.amount.1 = sum(Amount[Type == "Receipt" & date == past.pos.date.1]),
-                  past.pos.date.2 = RobustMax(date[Type == "Receipt" & date < past.pos.date.1]),
-                  amt.pd.by.past.pos.date.1 = sum(Amount[date < past.pos.date.1]),
-                  amt.pd.by.pst.dln.2 = sum(Amount[date <= pst.dln.2]),
-                  past.prep.amount.2 = sum(Amount[Type == "Receipt" & date == past.pos.date.2]),
-                  #adding the prepayment amount
-                  prep.amount = sum(Amount[Type == "Receipt" & date == updtd.pos.date]))
-
-
-#to check if it works
-View(vrl2)
-
+head(sc1$lst.pos.dt)
 
 #..................................................................................
 #4.5 Calculating the monthly payment
@@ -850,19 +818,13 @@ View(vrl2)
 head(sc1$actv.tot.repaid)
 head(sc1$prep.amount)
 
-#To generate we need to use the active total repaid, substract what the prepayment amount is, over the credit length(in months)
-sc1$updtd.prep.amount <- vrl2$prep.amount[match(sc1$OAFID, vrl2$OAFID)]
-
-#check
-head(sc1$OAFID)
-head(sc1$updtd.prep.amount)
 
 #First, let me add the prepayment amount here, 
-sc1$monthy.payment <- round((sc1$actv.tot.credit - sc1$updtd.prep.amount)/sc1$credit.length, 0)
+sc1$monthy.payment <- round((sc1$actv.tot.credit - sc1$prep.amount)/sc1$credit.length, 0)
 
 #to check if it works
 head(sc1$actv.tot.credit)
-head(sc1$updtd.prep.amount)
+head(sc1$prep.amount)
 head(sc1$monthy.payment)
 head(sc1$TotalCredit)
 head(sc1$TotalRepaid)
@@ -886,12 +848,13 @@ head(sc1$n.months.shld.hv.bn.pd, n = 10)
 
 #Then, calculating the amount that should have been paid since last POS
 sc1$amt.shld.hv.bn.pd.snc.lst.pos.b.elgible <- (sc1$monthy.payment*sc1$n.months.shld.hv.bn.pd) + 
-                                                  sc1$updtd.prep.amount
+                                                  sc1$prep.amount
 
 #To check if it works
 head(sc1$actv.tot.credit)
-head(sc1$updtd.prep.amount)
 head(sc1$prep.amount)
+head(sc1$prep.amount)
+head(sc1$monthy.payment)
 head(sc1$amt.shld.hv.bn.pd.snc.lst.pos.b.elgible)
 
 #calculating the total credit that should have been paid to be eligible for taking another credit
@@ -910,36 +873,53 @@ head(sc1$amt.shld.hv.bn.pd.snc.lst.pos.b.elgible)
 #4.7.1 Starting with Past Season 2
 #-----------------------------------------------------------------------------
 
-sc1$pst.clt.typ.2 <- ifelse(is.na(sc1$pst.dln.2) | is.infinite(sc1$pst.dln.2), "FALSE", 0)
+#Before doing anything, let's turn NAs into zero
+sc1$pst.dln.2 <- ifelse(is.na(sc1$pst.dln.2) | is.infinite(sc1$pst.dln.2), 0, sc1$pst.dln.2)
+sc1$pst.dln.1 <- ifelse(is.na(sc1$pst.dln.1) | is.infinite(sc1$pst.dln.1), 0, sc1$pst.dln.1)
+sc1$crnt.dln <- ifelse(is.na(sc1$crnt.dln) | is.infinite(sc1$crnt.dln), 0, sc1$crnt.dln)
 
-sc1$pst.clt.typ.2 <- ifelse(!is.na(sc1$pst.dln.2) & sc1$pst.dln.2 > sc1$past.pos.date.1, "Top Up", sc1$pst.clt.typ.2)
+#checks
+table(sc1$pst.dln.2, useNA = "ifany")
+table(sc1$crnt.dln, useNA = "ifany")
+
+#Let's turn them back to dates
+sc1$pst.dln.2 <- as.Date(sc1$pst.dln.2)
+sc1$pst.dln.1 <- as.Date(sc1$pst.dln.1)
+sc1$crnt.dln <- as.Date(sc1$crnt.dln)
+
+#check
+head(sc1$crnt.dln)
+table(sc1$pst.dln.2, useNA = "ifany")
+table(sc1$crnt.dln, useNA = "ifany")
 
 
-
-sc1$pst.clt.typ.2 <- ifelse(!is.na(sc1$pst.dln.2) & sc1$amt.pd.by.pst.dln.2 >= sc1$pst.crdt.2 &
+sc1$pst.clt.typ.2 <- ifelse(sc1$pst.dln.2 > sc1$past.pos.date.1, "Top Up", 0)
+sc1$pst.clt.typ.2 <- ifelse(sc1$amt.pd.by.pst.dln.2 >= sc1$pst.crdt.2 &
                                     sc1$pst.dln.2 > sc1$past.pos.date.1 &
                                     sc1$pst.crdt.2 > 0, "Returning", sc1$pst.clt.typ.2)
 
-sc1$pst.clt.typ.2 <- ifelse(!is.na(sc1$pst.dln.2) & sc1$amt.pd.by.pst.dln.2 < sc1$pst.crdt.2 & 
+sc1$pst.clt.typ.2 <- ifelse(sc1$amt.pd.by.pst.dln.2 < sc1$pst.crdt.2 & 
                                     sc1$amt.pd.by.past.pos.date.1 < sc1$pst.crdt.2, "Blacklisted Defaulter",
                             sc1$pst.clt.typ.2)
 
-sc1$pst.clt.typ.2 <- ifelse(!is.na(sc1$pst.dln.2) & sc1$amt.pd.by.pst.dln.2 < sc1$pst.crdt.2 & 
+sc1$pst.clt.typ.2 <- ifelse(sc1$amt.pd.by.pst.dln.2 < sc1$pst.crdt.2 & 
                                     sc1$amt.pd.by.past.pos.date.1 >= sc1$pst.crdt.2, "Forgiven Defaulter", 
                             sc1$pst.clt.typ.2)
+sc1$pst.clt.typ.2 <- ifelse(sc1$pst.dln.2 == "1970-01-01", "FALSE", sc1$pst.clt.typ.2)
 
 #To check if it works
-table(sc1$pst.clt.typ.2, useNA = "ifany") #Not sure the reason for the 48 Zeros. 
+table(sc1$pst.clt.typ.2, useNA = "ifany") #Not sure the reason for the 58 Zeros(the condition does not take account farmers where past POS 1 is > past deadline 1. 
 
-#vedaste to come back and understand what's happening
 test <- subset(sc1, sc1$pst.clt.typ.2 == 0)
+
+
+write.table(test, file = paste(od, "non_categorized_farmers_client_type2.csv", sep = "/"),
+            row.names = FALSE, col.names = TRUE, sep = ",")
 
 #4.7.2 Creating the Client Type for Past season 1
 #-----------------------------------------------------------------------------
-sc1$pst.clt.typ.1 <- ifelse(is.na(sc1$pst.dln.1) | is.infinite(sc1$pst.dln.1), "FALSE", 0)
-
 sc1$pst.clt.typ.1 <- ifelse(!is.na(sc1$pst.dln.1) & 
-                                    sc1$pst.dln.1 > sc1$lst.pos.dt, "Top Up", sc1$pst.clt.typ.1)
+                                    sc1$pst.dln.1 > sc1$lst.pos.dt, "Top Up", 0)
 
 sc1$pst.clt.typ.1 <- ifelse(!is.na(sc1$pst.dln.1) & 
                                     sc1$amt.pd.by.pst.dln.1 >= sc1$pst.crdt.1 &
@@ -959,11 +939,15 @@ sc1$pst.clt.typ.1 <- ifelse(!is.na(sc1$pst.dln.1) &
                                     sc1$amt.pd.by.pst.dln.1 < sc1$pst.crdt.1 & 
                                     (sc1$pst.clt.typ.2 == "Blacklisted Defaulter" |
                                     sc1$pst.clt.typ.2 == "Forgiven Defaulter"), "Double Defaulter", sc1$pst.clt.typ.1)
+sc1$pst.clt.typ.1 <- ifelse(sc1$pst.dln.1 == "1970-01-01", "FALSE", sc1$pst.clt.typ.1)
 #checks
-table(sc1$pst.clt.typ.1, useNA = "ifany") #196 zeros
+table(sc1$pst.clt.typ.1, useNA = "ifany") #300 zeros. Last POs is > past deadline 1
 
 #vedaste to come back and understand what's happening
 test1 <- subset(sc1, sc1$pst.clt.typ.1 == 0)
+
+write.table(test1, file = paste(od, "non_categorized_farmers_client_type1.csv", sep = "/"),
+            row.names = FALSE, col.names = TRUE, sep = ",")
 
 #4.7.3 let's create the current client type
 #####################################################################################################
@@ -1000,10 +984,7 @@ sc1$clt.typ <- ifelse(!is.na(sc1$crnt.dln) &
                                        sc1$pst.clt.typ.1 == "Double Defaulter"),"Double Defaulter", sc1$clt.typ) 
 
 
-table(sc1$clt.typ, useNA = "ifany") #1452 zeros. why?
-
-#Vedaste; To check later
-
+table(sc1$clt.typ, useNA = "ifany") #Here, things are okay
 #4.8 Generating Client status based on current credit
 ###############################################################################
 sc1$topup <- ifelse(!is.na(sc1$crnt.dln) &  
@@ -1239,7 +1220,7 @@ sc2 <- sc1[c(#Season Clients data
             
             #Current credit details
             "credit.type", "shs.po.date","skm.po.date", "skp.po.date",
-            "updtd.prep.amount" , "tot.mm.payment", "adjstd.lst.pos.dt",
+            "prep.amount" , "tot.mm.payment", "adjstd.lst.pos.dt",
             "credit.length", "monthy.payment", 
             
             #Current credit payments
@@ -1254,13 +1235,14 @@ sc2 <- sc1[c(#Season Clients data
             "old.credit", "actv.tot.credit", "actv.tot.repaid", 
             "fst.crt.ev.tkn")]    
 
+
 #Saving and exporting the final output
 save(sc2, file = paste(wd,"pshops_database_mar_25.RData", sep ="/"))
 
 #loading the file
 #load(file = paste(wd,"pshops_database_mar_25.RData", sep ="/"))
 
-write.table(sc2, file = paste(od, "pshops_database_mar_25.csv", sep = "/"),
+write.table(sc2, file = paste(od, "pshops_database_mar_27.csv", sep = "/"),
             row.names = FALSE, col.names = TRUE, sep = ",")
                                                           
                                          
